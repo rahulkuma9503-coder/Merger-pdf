@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -268,11 +269,12 @@ class PDFBot:
             output_path = f"temp/{user_id}_merged.pdf"
             pdf_handler.merge_pdfs(pdf_files, output_path)
             
-            await query.message.reply_document(
-                document=open(output_path, 'rb'),
-                filename='merged.pdf',
-                caption=f"✅ Successfully merged {len(pdf_files)} PDFs!"
-            )
+            with open(output_path, 'rb') as doc:
+                await query.message.reply_document(
+                    document=doc,
+                    filename='merged.pdf',
+                    caption=f"✅ Successfully merged {len(pdf_files)} PDFs!"
+                )
             
             # Cleanup
             for file in pdf_files:
@@ -305,11 +307,12 @@ class PDFBot:
             output_path = f"temp/{user_id}_{new_name}.pdf"
             pdf_handler.rename_pdf(pdf_file, output_path)
             
-            await update.message.reply_document(
-                document=open(output_path, 'rb'),
-                filename=f"{new_name}.pdf",
-                caption=f"✅ File renamed to: {new_name}.pdf"
-            )
+            with open(output_path, 'rb') as doc:
+                await update.message.reply_document(
+                    document=doc,
+                    filename=f"{new_name}.pdf",
+                    caption=f"✅ File renamed to: {new_name}.pdf"
+                )
             
             # Cleanup
             if os.path.exists(pdf_file):
@@ -342,11 +345,12 @@ class PDFBot:
             output_path = f"temp/{user_id}_watermarked.pdf"
             pdf_handler.add_watermark(pdf_file, output_path, watermark_text, position, opacity)
             
-            await query.message.reply_document(
-                document=open(output_path, 'rb'),
-                filename='watermarked.pdf',
-                caption=f"✅ Watermark added: '{watermark_text}'"
-            )
+            with open(output_path, 'rb') as doc:
+                await query.message.reply_document(
+                    document=doc,
+                    filename='watermarked.pdf',
+                    caption=f"✅ Watermark added: '{watermark_text}'"
+                )
             
             # Cleanup
             if os.path.exists(pdf_file):
@@ -365,7 +369,7 @@ class PDFBot:
                 "❌ An error occurred while adding watermark. Please try again."
             )
 
-def main():
+async def main_async():
     """Start the bot"""
     # Get token from environment
     token = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -387,15 +391,40 @@ def main():
     
     if webhook_url:
         logger.info("Starting webhook mode")
-        application.run_webhook(
-            listen="0.0.0.0",
-            port=port,
-            webhook_url=f"{webhook_url}/{token}",
-            url_path=token
-        )
+        await application.initialize()
+        await application.start()
+        await application.bot.set_webhook(url=f"{webhook_url}/{token}")
+        
+        from aiohttp import web
+        
+        async def telegram_webhook(request):
+            await application.update_queue.put(
+                Update.de_json(data=await request.json(), bot=application.bot)
+            )
+            return web.Response(text="OK")
+        
+        app = web.Application()
+        app.router.add_post(f"/{token}", telegram_webhook)
+        
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, "0.0.0.0", port)
+        await site.start()
+        
+        logger.info(f"Webhook server started on port {port}")
+        
+        # Keep running
+        await asyncio.Event().wait()
     else:
         logger.info("Starting polling mode")
-        application.run_polling()
+        await application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+def main():
+    """Entry point"""
+    try:
+        asyncio.run(main_async())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
 
 if __name__ == '__main__':
     main()
