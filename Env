@@ -1,0 +1,15 @@
+# Telegram Bot Token (Required)
+# Get this from @BotFather on Telegram
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+
+# MongoDB Connection URI (Optional)
+# If not provided, bot will use in-memory storage
+# Format: mongodb+srv://username:password@cluster.mongodb.net/
+MONGODB_URI=your_mongodb_uri_here
+
+# Webhook URL (Required for Render.com)
+# Format: https://your-app-name.onrender.com
+WEBHOOK_URL=https://your-app-name.onrender.com
+
+# Port (Render.com sets this automatically)
+PORT=8443
